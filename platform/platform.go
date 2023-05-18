@@ -34,16 +34,17 @@ type RunAsOptions struct {
 
 //BrowserSpec describes settings for Service
 type BrowserSpec struct {
-	BrowserName    string             `yaml:"-" json:"-"`
-	BrowserVersion string             `yaml:"-" json:"-"`
-	Image          string             `yaml:"image" json:"image"`
-	Path           string             `yaml:"path" json:"path"`
-	Privileged     *bool              `yaml:"privileged" json:"privileged"`
-	Meta           Meta               `yaml:"meta" json:"meta"`
-	Spec           Spec               `yaml:"spec" json:"spec"`
-	Volumes        []apiv1.Volume     `yaml:"volumes,omitempty" json:"volumes,omitempty"`
-	Capabilities   []apiv1.Capability `yaml:"kernelCaps,omitempty" json:"kernelCaps,omitempty"`
-	RunAs          RunAsOptions       `yaml:"runAs,omitempty" json:"runAs,omitempty"`
+	BrowserName     string                `yaml:"-" json:"-"`
+	BrowserVersion  string                `yaml:"-" json:"-"`
+	Image           string                `yaml:"image" json:"image"`
+	Path            string                `yaml:"path" json:"path"`
+	Privileged      *bool                 `yaml:"privileged" json:"privileged"`
+	Meta            Meta                  `yaml:"meta" json:"meta"`
+	Spec            Spec                  `yaml:"spec" json:"spec"`
+	Volumes         []apiv1.Volume        `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	Capabilities    []apiv1.Capability    `yaml:"kernelCaps,omitempty" json:"kernelCaps,omitempty"`
+	RunAs           RunAsOptions          `yaml:"runAs,omitempty" json:"runAs,omitempty"`
+	SecurityContext apiv1.SecurityContext `yaml:"securityContext,omitempty" json:"securityContext,omitempty"`
 }
 
 //ServiceSpec describes data requred for creating service

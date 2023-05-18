@@ -77,6 +77,8 @@ func (app *App) HandleSession(w http.ResponseWriter, r *http.Request) {
 
 	request := capabilities{}
 
+	logger.WithField("time_elapsed", tools.TimeElapsed(start)).Infof("request body is: %s", string(body))
+
 	err = json.Unmarshal(body, &request)
 	if err != nil {
 		logger.WithField("time_elapsed", tools.TimeElapsed(start)).Errorf("failed to parse request: %v", err)
@@ -108,7 +110,7 @@ func (app *App) HandleSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		logger.WithField("time_elapsed", tools.TimeElapsed(start)).Errorf("requested browser not found: %v", err)
+		logger.WithField("time_elapsed", tools.TimeElapsed(start)).Errorf("requested browser not found: %v; in capabilities: %v", err, caps)
 		tools.JSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}

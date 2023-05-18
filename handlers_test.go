@@ -486,6 +486,65 @@ func TestNewSessionCreated(t *testing.T) {
 
 }
 
+func TestNewAndroidSessionCreated(t *testing.T) {
+
+	tests := map[string]struct {
+		reqBody  io.Reader
+		respCode int
+		respBody string
+	}{
+		"Verify new session created": {
+			reqBody:  bytes.NewReader([]byte(`{"capabilities":{"firstMatch":[{"browserName":"chrome", "browserVersion":"68.0"}]}}`)),
+			respCode: http.StatusOK,
+			respBody: `{"sessionID":"223a259c-50e9-4d18-82bc-26a0cc8cb85f"}`,
+		},
+	}
+
+	for name, test := range tests {
+		t.Logf("TC: %s", name)
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/wd/hub/session", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"sessionID":"223a259c-50e9-4d18-82bc-26a0cc8cb85f"}`))
+		})
+		s := httptest.NewServer(mux)
+		defer s.Close()
+
+		u, _ := url.Parse(s.URL)
+
+		platform := &PlatformMock{
+			service: platform.Service{
+				SessionID:  "sessionID",
+				CancelFunc: func() {},
+				URL:        u,
+			},
+		}
+		app := initApp(platform)
+		req, err := http.NewRequest(http.MethodPost, session, test.reqBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rec := httptest.NewRecorder()
+		app.HandleSession(rec, req)
+
+		res := rec.Result()
+		defer res.Body.Close()
+
+		b, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("could not read response: %v", err)
+		}
+
+		body := string(bytes.TrimSpace(b))
+
+		assert.Equal(t, test.respCode, res.StatusCode)
+		assert.Equal(t, test.respBody, body)
+	}
+
+}
+
 func TestHandleHubStatus(t *testing.T) {
 	tests := map[string]struct {
 		respCode int

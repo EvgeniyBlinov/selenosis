@@ -1,5 +1,7 @@
 package selenium
 
+import "strings"
+
 //Capabilities ...
 type Capabilities struct {
 	BrowserName           string            `json:"browserName,omitempty"`
@@ -44,7 +46,7 @@ func (c *Capabilities) ValidateCapabilities() {
 //GetBrowserName ...
 func (c *Capabilities) GetBrowserName() string {
 	browserName := c.BrowserName
-	if browserName != "" {
+	if len(strings.TrimSpace(browserName)) != 0 {
 		return browserName
 	}
 	return c.DeviceName

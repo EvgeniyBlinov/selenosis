@@ -1,19 +1,32 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/url"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
+	"k8s.io/client-go/deprecated/scheme"
 	testcore "k8s.io/client-go/testing"
 
+	"k8s.io/kubernetes/pkg/util/yaml"
+
 	"github.com/alcounit/selenosis/selenium"
+	"github.com/google/uuid"
+	"github.com/imdario/mergo"
+	yayaml "gopkg.in/yaml.v3"
 	"gotest.tools/assert"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/fake"
@@ -355,4 +368,173 @@ func TestListPods(t *testing.T) {
 			assert.Equal(t, pod.Status, test.podStatus[i])
 		}
 	}
+}
+
+func TestGetPodManifest(t *testing.T) {
+	cfgFile, _ := filepath.Abs("./../config/browsers.yaml")
+	//t.Logf("Try to read config  %s", cfgFile)
+
+	layouts, err := readConfig(cfgFile, t)
+	if err != nil {
+		t.Logf("Config not read: %v", err)
+		return
+	}
+	t.Logf("Layouts %v", layouts)
+
+	type capabilities struct {
+		DesiredCapabilities selenium.Capabilities `json:"desiredCapabilities"`
+		Capabilities        struct {
+			AlwaysMatch selenium.Capabilities    `json:"alwaysMatch"`
+			FirstMatch  []*selenium.Capabilities `json:"firstMatch"`
+		} `json:"capabilities"`
+	}
+
+	request := capabilities{}
+
+	firstMatchCaps := request.Capabilities.FirstMatch
+	if len(firstMatchCaps) == 0 {
+		firstMatchCaps = append(firstMatchCaps, &selenium.Capabilities{})
+	}
+
+	var browser BrowserSpec
+	var caps selenium.Capabilities
+
+	for _, fmc := range firstMatchCaps {
+		caps = request.DesiredCapabilities
+		mergo.Merge(&caps, *fmc)
+		caps.ValidateCapabilities()
+
+		browser, err = FindContainer(layouts, caps.GetBrowserName(), caps.BrowserVersion)
+		if err != nil {
+			t.Logf("unknown browser %s", err)
+		}
+	}
+
+	if err != nil {
+		t.Logf("requested browser not found: %v", err)
+		return
+	}
+
+	image := parseImage(browser.Image)
+	var svcPort intstr.IntOrString
+	svcPort = intstr.FromString("4445")
+	pod := getPodManifest(ServiceSpec{
+		SessionID:             fmt.Sprintf("%s-%s", image, uuid.New()),
+		RequestedCapabilities: caps,
+		Template:              browser,
+	}, "svc", "proxyImage", svcPort, "idleTimeout", "ns", "imagePullSecretName")
+
+	codec := scheme.Codecs.LegacyCodec(scheme.Scheme.PrioritizedVersionsAllGroups()...)
+	body := runtime.EncodeOrDie(codec, pod)
+	t.Logf("pod dump: \n%s", body)
+
+	/*******************             handlers        ****************************/
+}
+
+func parseImage(image string) (container string) {
+	if len(image) > 0 {
+		pref, err := regexp.Compile("[^a-zA-Z0-9]+")
+		if err != nil {
+			return "browser"
+		}
+		fragments := strings.Split(image, "/")
+		image = fragments[len(fragments)-1]
+		return pref.ReplaceAllString(image, "-")
+	}
+	return "browser"
+}
+
+type Layout struct {
+	DefaultSpec     Spec                    `yaml:"spec" json:"spec"`
+	Meta            Meta                    `yaml:"meta" json:"meta"`
+	Path            string                  `yaml:"path" json:"path"`
+	DefaultVersion  string                  `yaml:"defaultVersion" json:"defaultVersion"`
+	Versions        map[string]*BrowserSpec `yaml:"versions" json:"versions"`
+	Volumes         []apiv1.Volume          `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	Capabilities    []apiv1.Capability      `yaml:"kernelCaps,omitempty" json:"kernelCaps,omitempty"`
+	RunAs           RunAsOptions            `yaml:"runAs,omitempty" json:"runAs,omitempty"`
+	SecurityContext apiv1.SecurityContext   `yaml:"securityContext,omitempty" json:"securityContext,omitempty"`
+}
+
+func readConfig(configFile string, t *testing.T) (map[string]*Layout, error) {
+	content, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("read error: %v", err)
+	}
+
+	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(content), 1000)
+
+	layouts := make(map[string]*Layout)
+	if err := decoder.Decode(&layouts); err != nil {
+		return nil, fmt.Errorf("parse error: %v", err)
+	}
+
+	if len(layouts) == 0 {
+		return nil, fmt.Errorf("empty config: %v", err)
+	}
+
+	for _, layout := range layouts {
+		spec := layout.DefaultSpec
+		for _, container := range layout.Versions {
+			if container.Path == "" {
+				container.Path = layout.Path
+			}
+			container.Meta.Annotations = merge(container.Meta.Annotations, layout.Meta.Annotations)
+			container.Meta.Labels = merge(container.Meta.Labels, layout.Meta.Labels)
+			container.Volumes = layout.Volumes
+			container.Capabilities = append(container.Capabilities, layout.Capabilities...)
+
+			if err := mergo.Merge(&container.SecurityContext, layout.SecurityContext); err != nil {
+				return nil, fmt.Errorf("merge error %v", err)
+			}
+
+			if err := mergo.Merge(&container.Spec, spec); err != nil {
+				return nil, fmt.Errorf("merge error %v", err)
+			}
+
+			if err := mergo.Merge(&container.RunAs, layout.RunAs); err != nil {
+				return nil, fmt.Errorf("merge error %v", err)
+			}
+		}
+	}
+
+	d, err := yayaml.Marshal(&layouts)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	fmt.Printf("--- t dump:\n%s\n\n", string(d))
+
+	return layouts, nil
+}
+
+func FindContainer(layouts map[string]*Layout, name string, version string) (BrowserSpec, error) {
+	c, ok := layouts[name]
+	if !ok {
+		return BrowserSpec{}, fmt.Errorf("unknown browser name %s", name)
+	}
+
+	v, ok := c.Versions[version]
+
+	if !ok {
+		if c.DefaultVersion != "" {
+			v, ok = c.Versions[c.DefaultVersion]
+			if !ok {
+				return BrowserSpec{}, fmt.Errorf("unknown browser version %s", version)
+			}
+			v.BrowserName = name
+			v.BrowserVersion = c.DefaultVersion
+			return *v, nil
+		}
+		return BrowserSpec{}, fmt.Errorf("unknown browser version %s", version)
+	}
+	v.BrowserName = name
+	v.BrowserVersion = version
+	return *v, nil
+}
+
+func merge(from, to map[string]string) map[string]string {
+	for k, v := range from {
+		to[k] = v
+	}
+	return to
 }

@@ -386,50 +386,7 @@ func (cl *service) Create(layout ServiceSpec) (Service, error) {
 		layout.Template.Meta.Annotations["capabilities"] = string(caps)
 	}
 
-	pod := &apiv1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        layout.SessionID,
-			Labels:      layout.Template.Meta.Labels,
-			Annotations: layout.Template.Meta.Annotations,
-		},
-		Spec: apiv1.PodSpec{
-			Hostname:  layout.SessionID,
-			Subdomain: cl.svc,
-			Containers: []apiv1.Container{
-				{
-					Name:  "browser",
-					Image: layout.Template.Image,
-					SecurityContext: &apiv1.SecurityContext{
-						Privileged:   layout.Template.Privileged,
-						Capabilities: getCapabilities(layout.Template.Capabilities),
-					},
-					Env:             layout.Template.Spec.EnvVars,
-					Ports:           getBrowserPorts(),
-					Resources:       layout.Template.Spec.Resources,
-					VolumeMounts:    getVolumeMounts(layout.Template.Spec.VolumeMounts),
-					ImagePullPolicy: apiv1.PullIfNotPresent,
-				},
-				{
-					Name:  "seleniferous",
-					Image: cl.proxyImage,
-					Ports: getSidecarPorts(cl.svcPort),
-					Command: []string{
-						"/seleniferous", "--listhen-port", cl.svcPort.StrVal, "--proxy-default-path", path.Join(layout.Template.Path, "session"), "--idle-timeout", cl.idleTimeout.String(), "--namespace", cl.ns,
-					},
-					ImagePullPolicy: apiv1.PullIfNotPresent,
-				},
-			},
-			Volumes:          getVolumes(layout.Template.Volumes),
-			NodeSelector:     layout.Template.Spec.NodeSelector,
-			HostAliases:      layout.Template.Spec.HostAliases,
-			RestartPolicy:    apiv1.RestartPolicyNever,
-			Affinity:         &layout.Template.Spec.Affinity,
-			DNSConfig:        &layout.Template.Spec.DNSConfig,
-			Tolerations:      layout.Template.Spec.Tolerations,
-			ImagePullSecrets: getImagePullSecretList(cl.imagePullSecretName),
-			SecurityContext:  getSecurityContext(layout.Template.RunAs),
-		},
-	}
+	pod := getPodManifest(layout, cl.svc, cl.proxyImage, cl.svcPort, cl.idleTimeout.String(), cl.ns, cl.imagePullSecretName)
 
 	context := context.Background()
 	pod, err := cl.clientset.CoreV1().Pods(cl.ns).Create(context, pod, metav1.CreateOptions{})
@@ -513,6 +470,58 @@ func (cl *service) Create(layout ServiceSpec) (Service, error) {
 		Status:  Running,
 		Started: pod.CreationTimestamp.Time,
 	}, nil
+}
+
+func getPodManifest(layout ServiceSpec, svc string, proxyImage string, svcPort intstr.IntOrString, idleTimeout string, ns string, imagePullSecretName string) *apiv1.Pod {
+	pod := &apiv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        layout.SessionID,
+			Labels:      layout.Template.Meta.Labels,
+			Annotations: layout.Template.Meta.Annotations,
+		},
+		Spec: apiv1.PodSpec{
+			Hostname:  layout.SessionID,
+			Subdomain: svc,
+			Containers: []apiv1.Container{
+				{
+					Name:            "browser",
+					Image:           layout.Template.Image,
+					SecurityContext: &layout.Template.SecurityContext,
+					//SecurityContext: &apiv1.SecurityContext{
+					//Privileged:               layout.Template.Privileged,
+					//Capabilities:             getCapabilities(layout.Template.Capabilities),
+					//},
+					Env:             layout.Template.Spec.EnvVars,
+					Ports:           getBrowserPorts(),
+					Resources:       layout.Template.Spec.Resources,
+					VolumeMounts:    getVolumeMounts(layout.Template.Spec.VolumeMounts),
+					ImagePullPolicy: apiv1.PullIfNotPresent,
+					//SecurityContext: layout.Template.SecurityContext,
+				},
+				{
+					Name:  "seleniferous",
+					Image: proxyImage,
+					Ports: getSidecarPorts(svcPort),
+					Command: []string{
+						"/seleniferous", "--listhen-port", svcPort.StrVal, "--proxy-default-path", path.Join(layout.Template.Path, "session"), "--idle-timeout", idleTimeout, "--namespace", ns,
+					},
+					ImagePullPolicy: apiv1.PullIfNotPresent,
+				},
+			},
+			Volumes:          getVolumes(layout.Template.Volumes),
+			NodeSelector:     layout.Template.Spec.NodeSelector,
+			HostAliases:      layout.Template.Spec.HostAliases,
+			RestartPolicy:    apiv1.RestartPolicyNever,
+			Affinity:         &layout.Template.Spec.Affinity,
+			DNSConfig:        &layout.Template.Spec.DNSConfig,
+			Tolerations:      layout.Template.Spec.Tolerations,
+			ImagePullSecrets: getImagePullSecretList(imagePullSecretName),
+			SecurityContext:  getSecurityContext(layout.Template.RunAs),
+			//SecurityContext: &layout.Template.SecurityContext,
+		},
+	}
+
+	return pod
 }
 
 //Delete ...

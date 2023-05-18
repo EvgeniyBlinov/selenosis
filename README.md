@@ -760,3 +760,9 @@ kind: ConfigMap
 ...
 ```
 Currently this project is under development and can be unstable, in case of any bugs or ideas please report
+
+### @TODO
+
+- handlers_test.go
+
+- platform/kubernetes_test.go

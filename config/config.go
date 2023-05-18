@@ -17,14 +17,15 @@ import (
 
 //Layout ...
 type Layout struct {
-	DefaultSpec    platform.Spec                    `yaml:"spec" json:"spec"`
-	Meta           platform.Meta                    `yaml:"meta" json:"meta"`
-	Path           string                           `yaml:"path" json:"path"`
-	DefaultVersion string                           `yaml:"defaultVersion" json:"defaultVersion"`
-	Versions       map[string]*platform.BrowserSpec `yaml:"versions" json:"versions"`
-	Volumes        []apiv1.Volume                   `yaml:"volumes,omitempty" json:"volumes,omitempty"`
-	Capabilities   []apiv1.Capability               `yaml:"kernelCaps,omitempty" json:"kernelCaps,omitempty"`
-	RunAs          platform.RunAsOptions            `yaml:"runAs,omitempty" json:"runAs,omitempty"`
+	DefaultSpec     platform.Spec                    `yaml:"spec" json:"spec"`
+	Meta            platform.Meta                    `yaml:"meta" json:"meta"`
+	Path            string                           `yaml:"path" json:"path"`
+	DefaultVersion  string                           `yaml:"defaultVersion" json:"defaultVersion"`
+	Versions        map[string]*platform.BrowserSpec `yaml:"versions" json:"versions"`
+	Volumes         []apiv1.Volume                   `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	Capabilities    []apiv1.Capability               `yaml:"kernelCaps,omitempty" json:"kernelCaps,omitempty"`
+	RunAs           platform.RunAsOptions            `yaml:"runAs,omitempty" json:"runAs,omitempty"`
+	SecurityContext apiv1.SecurityContext            `yaml:"securityContext,omitempty" json:"securityContext,omitempty"`
 }
 
 //BrowsersConfig ...
@@ -136,12 +137,16 @@ func readConfig(configFile string) (map[string]*Layout, error) {
 		spec := layout.DefaultSpec
 		for _, container := range layout.Versions {
 			if container.Path == "" {
-				container.Path = layout.Path	
-			}			
+				container.Path = layout.Path
+			}
 			container.Meta.Annotations = merge(container.Meta.Annotations, layout.Meta.Annotations)
 			container.Meta.Labels = merge(container.Meta.Labels, layout.Meta.Labels)
 			container.Volumes = layout.Volumes
 			container.Capabilities = append(container.Capabilities, layout.Capabilities...)
+
+			if err := mergo.Merge(&container.SecurityContext, layout.SecurityContext); err != nil {
+				return nil, fmt.Errorf("merge error %v", err)
+			}
 
 			if err := mergo.Merge(&container.Spec, spec); err != nil {
 				return nil, fmt.Errorf("merge error %v", err)
