@@ -139,7 +139,9 @@ func (app *App) HandleSession(w http.ResponseWriter, r *http.Request) {
 
 	i := 1
 	for ; ; i++ {
-		req, _ := http.NewRequest(http.MethodPost, service.URL.String(), bytes.NewReader(body))
+		bodyWOSelenoidOpts := removeExtraOptions(body, "selenoid:options")
+		newBody := removeExtraOptions(bodyWOSelenoidOpts, "moon:options")
+		req, _ := http.NewRequest(http.MethodPost, service.URL.String(), bytes.NewReader(newBody))
 		req.Close = true
 		req.Header.Set("X-Forwarded-Selenosis", app.selenosisHost)
 		ctx, done := context.WithTimeout(r.Context(), app.browserWaitTimeout)
@@ -429,4 +431,34 @@ func isValidSession(session string) bool {
 		}
 	}
 	return false
+}
+
+func removeExtraOptions(input []byte, extraOptions string) []byte {
+	body := make(map[string]interface{})
+	_ = json.Unmarshal(input, &body)
+	if raw, ok := body["desiredCapabilities"]; ok {
+		if dc, ok := raw.(map[string]interface{}); ok {
+			delete(dc, extraOptions)
+		}
+	}
+	if raw, ok := body["capabilities"]; ok {
+		if c, ok := raw.(map[string]interface{}); ok {
+			if raw, ok := c["alwaysMatch"]; ok {
+				if am, ok := raw.(map[string]interface{}); ok {
+					delete(am, extraOptions)
+				}
+			}
+			if raw, ok := c["firstMatch"]; ok {
+				if fm, ok := raw.([]interface{}); ok {
+					for _, raw := range fm {
+						if c, ok := raw.(map[string]interface{}); ok {
+							delete(c, extraOptions)
+						}
+					}
+				}
+			}
+		}
+	}
+	ret, _ := json.Marshal(body)
+	return ret
 }

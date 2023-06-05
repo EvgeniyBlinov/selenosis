@@ -595,7 +595,7 @@ func TestHandleStatus(t *testing.T) {
 		respBody string
 	}{
 		"Verify status when no active session running": {
-			respBody: `{"status":200,"version":"","selenosis":{"total":0,"active":0,"pending":0,"config":{"chrome":["68.0","86.0"],"firefox":["45.0","47.0"],"opera":["66.0","71.0"]}}}`,
+			respBody: `{"status":200,"version":"","selenosis":{"total":0,"active":0,"pending":0,"config":{"android":["8.1"],"chrome":["68.0","86.0"],"firefox":["45.0","47.0"],"opera":["66.0","71.0"]}}}`,
 		},
 	}
 
@@ -624,6 +624,33 @@ func TestHandleStatus(t *testing.T) {
 		body := string(bytes.TrimSpace(b))
 
 		assert.Equal(t, test.respBody, body)
+	}
+
+}
+
+func TestRemoveExtraOptions(t *testing.T) {
+
+	tests := map[string]struct {
+		input        []byte
+		extraOptions string
+		result       []byte
+	}{
+		"Verify selenoid options are removed": {
+			input:        []byte(`{"capabilities":{"firstMatch":[{"browserName":"chrome", "browserVersion":"68.0"}], "alwaysMatch":{"selenoid:options":{"enableVNC": true}, "moon:options":{"enableVNC": true}}}}`),
+			extraOptions: "selenoid:options",
+			result:       []byte(`{"capabilities":{"alwaysMatch":{"moon:options":{"enableVNC":true}},"firstMatch":[{"browserName":"chrome","browserVersion":"68.0"}]}}`),
+		},
+		"Verify moon options are removed": {
+			input:        []byte(`{"capabilities":{"firstMatch":[{"browserName":"chrome", "browserVersion":"68.0"}], "alwaysMatch":{"selenoid:options":{"enableVNC": true}, "moon:options":{"enableVNC": true}}}}`),
+			extraOptions: "moon:options",
+			result:       []byte(`{"capabilities":{"alwaysMatch":{"selenoid:options":{"enableVNC":true}},"firstMatch":[{"browserName":"chrome","browserVersion":"68.0"}]}}`),
+		},
+	}
+
+	for name, test := range tests {
+		t.Logf("TC: %s", name)
+		result := removeExtraOptions(test.input, test.extraOptions)
+		assert.Equal(t, string(result), string(test.result))
 	}
 
 }

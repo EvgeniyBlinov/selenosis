@@ -1,11 +1,25 @@
 package selenium
 
-import "strings"
+import (
+	"strings"
 
-//Capabilities ...
+	"github.com/imdario/mergo"
+)
+
+// Capabilities ...
+// Moon Reserved Label Names Key - Meaning (moon:options)
+// app              - Stores unique name for every pod
+// browserName      - Stores browser name
+// browserVersion   - Stores browser version
+// enableVNC        - Stores whether VNC is enabled
+// moon             - System label, always equal to browsers
+// quota            - Stores user quota name
+// screenResolution - Stores screen resolution requested by user
+
 type Capabilities struct {
 	BrowserName           string            `json:"browserName,omitempty"`
 	DeviceName            string            `json:"deviceName,omitempty"`
+	W3CDeviceName         string            `json:"appium:deviceName,omitempty"`
 	BrowserVersion        string            `json:"version,omitempty"`
 	W3CBrowserVersion     string            `json:"browserVersion,omitempty"`
 	Platform              string            `json:"platform,omitempty"`
@@ -30,6 +44,8 @@ type Capabilities struct {
 	DNSServers            []string          `json:"dnsServers,omitempty"`
 	Labels                map[string]string `json:"labels,omitempty"`
 	SessionTimeout        string            `json:"sessionTimeout,omitempty"`
+	SelenoidCapabilities  *Capabilities     `json:"selenoid:options,omitempty"`
+	MoonCapabilities      *Capabilities     `json:"moon:options,omitempty"`
 }
 
 //ValidateCapabilities ...
@@ -41,6 +57,19 @@ func (c *Capabilities) ValidateCapabilities() {
 	if c.WC3PlatformName != "" {
 		c.Platform = c.WC3PlatformName
 	}
+
+	if c.W3CDeviceName != "" {
+		c.DeviceName = c.W3CDeviceName
+	}
+
+	if c.SelenoidCapabilities != nil {
+		mergo.Merge(c, *c.SelenoidCapabilities, mergo.WithOverride) //We probably need to handle returned error
+	}
+
+	if c.MoonCapabilities != nil {
+		mergo.Merge(c, *c.MoonCapabilities, mergo.WithOverride) //We probably need to handle returned error
+	}
+
 }
 
 //GetBrowserName ...
@@ -49,5 +78,8 @@ func (c *Capabilities) GetBrowserName() string {
 	if len(strings.TrimSpace(browserName)) != 0 {
 		return browserName
 	}
-	return c.DeviceName
+	if c.DeviceName != "" {
+		return c.DeviceName
+	}
+	return c.W3CDeviceName
 }

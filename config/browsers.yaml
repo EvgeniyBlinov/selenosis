@@ -103,26 +103,14 @@
             image: selenoid/android:8.1
             port: 4444
             spec:
-              #securityContext:
-                #allowPrivilegeEscalation: true
-                #readOnlyRootFilesystem: false
-                #privileged: true
-                #capabilities:
-                  #add:
-                  #- net_raw
-                  #- NET_ADMIN
-
               resources:
                 requests:
-                  cpu: 1
-                  memory: 2G
-                  #devices.kubevirt.io/kvm: "1"
+                  cpu: 2
+                  memory: 6G
                 limits:
-                  cpu: 1
-                  memory: 2G
-                  #devices.kubevirt.io/kvm: "1"
+                  cpu: 2
+                  memory: 6G
 
               volumeMounts:
                 - mountPath: /dev/kvm
                   name: kvm
-
